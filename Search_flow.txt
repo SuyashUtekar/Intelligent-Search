@@ -1,0 +1,33 @@
+
+
+2. Triage (in-process, still sync)
+Classify the query as simple-lexical vs multi-strategy.
+
+	•	Fast path: simple lookup → direct BM25 call to Elasticsearch → return in the same request/response cycle. No Kafka involved.
+	•	Complex path: write job status PENDING to Redis, publish to Kafka, return {request_id, status: "processing"} immediately.
+
+3–13. Async pipeline (Kafka) — detailed stage-by-stage below.
+
+14. Client retrieves result
+GET /search/results/{request_id} (poll) or WebSocket push — returns answer, cited chunks, latency breakdown.
+
+Kafka Search Pipeline (stage by stage)
+
+
+
+	•	POST /search/query — submit (async path)
+	•	POST /search/query/sync — fast-path BM25-only
+	•	GET /search/results/{request_id} — poll result
+	•	GET /search/status/{request_id} — lightweight status
+	•	WS /ws/search/{request_id} — real-time push
+	•	POST /search/feedback — relevance signal for your eval loop
+	•	GET /health, GET /ready
+
+Kafka Processors & Topics
+
+Topics: search.request.raw → search.request.enriched → search.candidates.fused → search.results.reranked → search.response.final, plus search.audit.log and per-stage *.dlq
+
+Processors: Query Understanding → Retrieval (fan-out) → Fusion (RRF) → Reranking → Synthesis → Response Writer
+
+The HTML file below visualizes this whole flow as a schematic — solid cards are compute (processors), dashed cards are Kafka topics in flight.
+
