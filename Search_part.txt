@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Search API × Kafka Pipeline — End-to-End Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0E18;
+    --panel:#121826;
+    --panel-2:#0F1420;
+    --border:#212B40;
+    --text:#E7ECF6;
+    --muted:#8592AC;
+    --cyan:#45D9CB;
+    --amber:#F5A93E;
+    --violet:#A98BFF;
+    --slate:#7C8FB0;
+    --font-sans:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(69,217,203,0.07), transparent 60%),
+      radial-gradient(ellipse 900px 600px at 100% 20%, rgba(245,169,62,0.06), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--font-sans);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  a{color:var(--cyan);}
+
+  .page{max-width:760px; margin:0 auto; padding:3rem 1.5rem 5rem;}
+
+  /* ---------- HERO ---------- */
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:0.9rem;
+  }
+  h1{
+    font-size:2.1rem;
+    font-weight:700;
+    letter-spacing:-0.01em;
+    margin:0 0 0.75rem;
+  }
+  .accent-cyan{color:var(--cyan);}
+  .sub{
+    color:var(--muted);
+    font-size:1rem;
+    max-width:52ch;
+    margin:0 0 1.75rem;
+  }
+
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:0.6rem;
+    padding:0.9rem 1rem;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+  }
+  .legend-item{
+    display:flex;
+    align-items:center;
+    gap:0.45rem;
+    font-family:var(--font-mono);
+    font-size:0.74rem;
+    color:var(--muted);
+  }
+  .dot{width:0.55rem; height:0.55rem; border-radius:50%; flex:none;}
+  .dot.cyan{background:var(--cyan);}
+  .dot.amber{background:var(--amber);}
+  .dot.violet{background:var(--violet);}
+  .dot.slate{background:var(--slate);}
+
+  /* ---------- SECTION LABELS ---------- */
+  .plane-label{
+    display:flex;
+    align-items:center;
+    gap:0.6rem;
+    margin:3rem 0 1.25rem;
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .plane-label::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:linear-gradient(90deg, var(--border), transparent);
+  }
+  .plane-label .tag{
+    padding:0.15rem 0.55rem;
+    border-radius:5px;
+    font-weight:600;
+  }
+  .plane-label .tag.sync{color:var(--cyan); background:rgba(69,217,203,0.1); border:1px solid rgba(69,217,203,0.35);}
+  .plane-label .tag.async{color:var(--amber); background:rgba(245,169,62,0.1); border:1px solid rgba(245,169,62,0.35);}
+
+  /* ---------- TIMELINE ---------- */
+  .timeline{position:relative;}
+  .timeline::before{
+    content:"";
+    position:absolute;
+    top:0.4rem; bottom:0.4rem; left:1.05rem;
+    width:2px;
+    background:linear-gradient(180deg, var(--border), var(--border) 92%, transparent);
+  }
+
+  .stage{position:relative; padding-left:2.9rem; margin-bottom:1.5rem;}
+  .stage::after{
+    content:"";
+    position:absolute;
+    left:0.65rem; top:0.5rem;
+    width:0.8rem; height:0.8rem;
+    border-radius:50%;
+    background:var(--dot);
+    box-shadow:0 0 0 4px var(--bg), 0 0 10px var(--dot-glow);
+  }
+  .stage[data-plane="sync"]{--dot:var(--cyan); --dot-glow:rgba(69,217,203,0.55); --plane:var(--cyan);}
+  .stage[data-plane="proc"]{--dot:var(--violet); --dot-glow:rgba(169,139,255,0.5); --plane:var(--violet);}
+  .stage[data-plane="topic"]{--dot:var(--amber); --dot-glow:rgba(245,169,62,0.55); --plane:var(--amber);}
+  .stage[data-plane="store"]{--dot:var(--slate); --dot-glow:rgba(124,143,176,0.45); --plane:var(--slate);}
+
+  .stage-kind{
+    font-family:var(--font-mono);
+    font-size:0.68rem;
+    letter-spacing:0.09em;
+    text-transform:uppercase;
+    color:var(--plane);
+    margin-bottom:0.4rem;
+  }
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-left:3px solid var(--plane);
+    border-radius:10px;
+    padding:0.95rem 1.15rem;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .card:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,0.28);}
+  }
+
+  .card h3{
+    margin:0 0 0.35rem;
+    font-size:1.02rem;
+    font-weight:600;
+  }
+  .card h3 code, .stage-kind code{
+    font-family:var(--font-mono);
+  }
+  .card p{
+    margin:0 0 0.5rem;
+    color:var(--muted);
+    font-size:0.9rem;
+  }
+  .card p:last-child{margin-bottom:0;}
+
+  .tech-line{
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    color:var(--text);
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:0.35rem 0.6rem;
+    margin-top:0.6rem;
+    overflow-x:auto;
+  }
+
+  .branch{
+    font-size:0.82rem;
+    color:var(--muted);
+    margin-top:0.55rem;
+    padding-left:1.1rem;
+    position:relative;
+  }
+  .branch::before{content:"↳"; position:absolute; left:0; color:var(--border);}
+  .branch.fail{color:#E4826B;}
+  .branch code{font-family:var(--font-mono); color:var(--text); font-size:0.8rem;}
+
+  /* topic (thin, dashed — a message in flight, not a compute stage) */
+  .stage[data-plane="topic"] .card{
+    border-left-style:dashed;
+    border:1px dashed rgba(245,169,62,0.45);
+    border-left-width:3px;
+    background:rgba(245,169,62,0.045);
+    padding:0.6rem 1.05rem;
+  }
+  .stage[data-plane="topic"] .topic-name{
+    font-family:var(--font-mono);
+    font-size:0.95rem;
+    font-weight:500;
+    color:var(--amber);
+  }
+  .stage[data-plane="topic"] .card p{margin-top:0.3rem; font-size:0.82rem;}
+
+  /* fast-path callout */
+  .callout{
+    margin-top:0.7rem;
+    border:1px dashed rgba(69,217,203,0.4);
+    background:rgba(69,217,203,0.05);
+    border-radius:8px;
+    padding:0.65rem 0.85rem;
+    font-size:0.84rem;
+    color:var(--muted);
+  }
+  .callout b{color:var(--cyan); font-weight:600;}
+
+  /* ---------- APPENDIX ---------- */
+  .appendix{
+    margin-top:3.5rem;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1.25rem;
+  }
+  @media (max-width:620px){ .appendix{grid-template-columns:1fr;} }
+
+  .appendix-block{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:1.1rem 1.2rem;
+  }
+  .appendix-block h4{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin:0 0 0.8rem;
+  }
+  .appendix-block ul{list-style:none; margin:0; padding:0;}
+  .appendix-block li{
+    font-family:var(--font-mono);
+    font-size:0.8rem;
+    padding:0.4rem 0;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    justify-content:space-between;
+    gap:0.5rem;
+  }
+  .appendix-block li:last-child{border-bottom:none;}
+  .appendix-block .method{color:var(--cyan); flex:none;}
+  .appendix-block .topicline{color:var(--amber);}
+
+  footer{
+    margin-top:3rem;
+    padding-top:1.5rem;
+    border-top:1px solid var(--border);
+    color:var(--muted);
+    font-size:0.82rem;
+  }
+  footer code{font-family:var(--font-mono); color:var(--text);}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="eyebrow">INTELLIGENCE SEARCH SYSTEM · PIPELINE SCHEMATIC</div>
+  <h1>Search API <span class="accent-cyan">×</span> Kafka Flow</h1>
+  <p class="sub">One request plane that answers fast, one streaming plane that answers well — from raw query to a reranked, cited response.</p>
+
+  <div class="legend">
+    <span class="legend-item"><i class="dot cyan"></i>Sync — client / API</span>
+    <span class="legend-item"><i class="dot amber"></i>Kafka topic</span>
+    <span class="legend-item"><i class="dot violet"></i>Consumer / processor</span>
+    <span class="legend-item"><i class="dot slate"></i>Storage / state</span>
+  </div>
+
+  <!-- ================= SYNC ENTRY ================= -->
+  <div class="plane-label"><span class="tag sync">Sync</span></div>
+
+  <div class="timeline">
+
+    <div class="stage" data-plane="sync">
+      <div class="stage-kind">01 · Client → API</div>
+      <div class="card">
+        <h3><code>POST /api/v1/search/query</code></h3>
+        <p>Client sends query, filters, top_k. API mints <code>request_id</code> and <code>correlation_id</code>, validates the payload schema.</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="sync">
+      <div class="stage-kind">02 · Search API — Triage</div>
+      <div class="card">
+        <h3>Query classification</h3>
+        <p>Fast in-process check: is this a simple lexical lookup, or does it need multi-strategy retrieval + rerank + synthesis?</p>
+        <div class="callout"><b>Fast path —</b> simple lookups skip Kafka entirely: direct BM25 call to Elasticsearch, response returned in the same request/response cycle.</div>
+        <p>Complex queries continue below. Job status written to Redis as <code>PENDING</code>, event published to Kafka.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= ASYNC PIPELINE ================= -->
+  <div class="plane-label"><span class="tag async">Async</span></div>
+
+  <div class="timeline">
+
+    <div class="stage" data-plane="topic">
+      <div class="stage-kind">03 · Kafka Topic</div>
+      <div class="card">
+        <div class="topic-name">search.request.raw</div>
+        <p>query · filters · request_id · correlation_id (header) · submitted_at</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">04 · Processor</div>
+      <div class="card">
+        <h3>Query Understanding Processor</h3>
+        <p>Rewrites and expands the query (domain acronym normalization — G-SIB, NBFC, LEF), classifies intent, extracts entities and date-range filters.</p>
+        <div class="branch fail">on failure → <code>search.request.dlq</code></div>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="topic">
+      <div class="stage-kind">05 · Kafka Topic</div>
+      <div class="card">
+        <div class="topic-name">search.request.enriched</div>
+        <p>normalized query · extracted filters · intent label</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">06 · Processor — fan-out</div>
+      <div class="card">
+        <h3>Retrieval Processor</h3>
+        <p>Runs three strategies in parallel against Elasticsearch: BM25 lexical, dense kNN (mpnet-base-v2 query embedding), and SPLADE sparse.</p>
+        <div class="tech-line">top_n per strategy, independently tunable</div>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="store">
+      <div class="stage-kind">Storage</div>
+      <div class="card">
+        <h3>Elasticsearch</h3>
+        <p>dense_vector kNN + BM25 analyzed text + content_type / doc_type filters, in one queried index.</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">07 · Processor</div>
+      <div class="card">
+        <h3>Fusion (RRF)</h3>
+        <p>Combines the three ranked lists with Reciprocal Rank Fusion into one candidate set — no single strategy dominates.</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="topic">
+      <div class="stage-kind">08 · Kafka Topic</div>
+      <div class="card">
+        <div class="topic-name">search.candidates.fused</div>
+        <p>fused candidate chunks · RRF scores · strategy provenance</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">09 · Processor</div>
+      <div class="card">
+        <h3>Reranking Processor</h3>
+        <p>Cross-encoder rerank with bge-reranker-large — top ~50 candidates narrowed to the top ~10 most relevant.</p>
+        <div class="branch fail">on failure → <code>search.rerank.dlq</code></div>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="topic">
+      <div class="stage-kind">10 · Kafka Topic</div>
+      <div class="card">
+        <div class="topic-name">search.results.reranked</div>
+        <p>top-k chunks · rerank scores · source metadata</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">11 · Processor</div>
+      <div class="card">
+        <h3>Synthesis Processor</h3>
+        <p>Builds a grounded prompt from the reranked chunks and calls the on-prem LLM (GPT-OSS-20B) for a cited answer.</p>
+        <div class="branch fail">on failure → <code>search.synthesis.dlq</code></div>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="topic">
+      <div class="stage-kind">12 · Kafka Topic</div>
+      <div class="card">
+        <div class="topic-name">search.response.final</div>
+        <p>synthesized answer · cited chunk ids · confidence / latency breakdown</p>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="proc">
+      <div class="stage-kind">13 · Processor</div>
+      <div class="card">
+        <h3>Response Writer</h3>
+        <p>Persists the final result keyed by <code>request_id</code>, status set to <code>COMPLETED</code>; pushes over WebSocket if the client is subscribed.</p>
+        <div class="branch">also emits → <code>search.audit.log</code> for the eval harness (LLM-as-judge, ROUGE-L, citation presence)</div>
+      </div>
+    </div>
+
+    <div class="stage" data-plane="store">
+      <div class="stage-kind">Storage</div>
+      <div class="card">
+        <h3>Redis / Job Store</h3>
+        <p>Holds job status and final payload, keyed by request_id — what the API polls or pushes from.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= SYNC RETURN ================= -->
+  <div class="plane-label"><span class="tag sync">Sync</span></div>
+
+  <div class="timeline">
+    <div class="stage" data-plane="sync">
+      <div class="stage-kind">14 · API → Client</div>
+      <div class="card">
+        <h3><code>GET /api/v1/search/results/{request_id}</code> <span style="color:var(--muted); font-weight:400;">or WS push</span></h3>
+        <p>Client retrieves the final answer, its cited source chunks, and a per-stage latency breakdown.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APPENDIX ================= -->
+  <div class="appendix">
+    <div class="appendix-block">
+      <h4>API Endpoints</h4>
+      <ul>
+        <li><span class="method">POST</span><span>/search/query</span></li>
+        <li><span class="method">POST</span><span>/search/query/sync</span></li>
+        <li><span class="method">GET</span><span>/search/results/{id}</span></li>
+        <li><span class="method">GET</span><span>/search/status/{id}</span></li>
+        <li><span class="method">WS</span><span>/ws/search/{id}</span></li>
+        <li><span class="method">POST</span><span>/search/feedback</span></li>
+        <li><span class="method">GET</span><span>/health · /ready</span></li>
+      </ul>
+    </div>
+    <div class="appendix-block">
+      <h4>Kafka Topics</h4>
+      <ul>
+        <li><span class="topicline">search.request.raw</span></li>
+        <li><span class="topicline">search.request.enriched</span></li>
+        <li><span class="topicline">search.candidates.fused</span></li>
+        <li><span class="topicline">search.results.reranked</span></li>
+        <li><span class="topicline">search.response.final</span></li>
+        <li><span class="topicline">search.audit.log</span></li>
+        <li><span style="color:#E4826B;">*.dlq (per stage)</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <code>correlation_id</code> is minted once at the API edge and carried as a Kafka header through every hop — the same ContextVar-based propagation pattern already used in the ingestion service, so a single request is traceable end to end across both planes.
+  </footer>
+
+</div>
+</body>
+</html>
