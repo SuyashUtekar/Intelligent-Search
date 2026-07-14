@@ -1,0 +1,38 @@
+from docx import Document
+from docx.oxml.ns import qn
+
+def extract_text_by_page(docx_path: str) -> dict[int, str]:
+    doc = Document(docx_path)
+    pages: dict[int, str] = {}
+    page_num = 1
+    buffer = []
+
+    for para in doc.paragraphs:
+        # Check for explicit page breaks within the paragraph's runs
+        broke_page = False
+        for run in para.runs:
+            br_elements = run._element.findall(qn('w:br'))
+            for br in br_elements:
+                if br.get(qn('w:type')) == 'page':
+                    broke_page = True
+
+        if para.text.strip():
+            buffer.append(para.text)
+
+        if broke_page:
+            pages[page_num] = "\n".join(buffer).strip()
+            page_num += 1
+            buffer = []
+
+    # flush remaining text as last page
+    if buffer:
+        pages[page_num] = "\n".join(buffer).strip()
+
+    return pages
+
+
+if __name__ == "__main__":
+    result = extract_text_by_page("sample.docx")
+    for pg, text in result.items():
+        print(f"--- Page {pg} ---")
+        print(text[:200], "...\n")
